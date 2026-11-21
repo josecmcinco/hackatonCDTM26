@@ -10,6 +10,7 @@ Si Gemini no está disponible, usa un parser heurístico de texto libre.
 """
 
 import os
+import copy
 import json
 import uuid
 import random
@@ -94,10 +95,7 @@ class SearchMatchesService:
             # top_k = 3 candidatos por rol (suficiente para la UI)
             ideal_dto.top_k = 3
 
-            candidatos = self.candidatos_service.obtener_ranking_para_candidato_ideal(
-                ideal=ideal_dto,
-                excluir_ids=used_ids
-            )
+            candidatos, relajacion = self._buscar_con_relajacion(ideal_dto, used_ids)
 
             # Registrar IDs para evitar duplicados entre roles críticos
             if profile.get("inferredImportance") == "critical" and candidatos:
@@ -107,6 +105,7 @@ class SearchMatchesService:
                 "roleId": profile.get("roleId", f"role-{uuid.uuid4().hex[:6]}"),
                 "roleName": profile.get("roleName", "Rol desconocido"),
                 "inferredImportance": profile.get("inferredImportance", "medium"),
+                "filtersRelaxed": relajacion,
                 "matches": [self._candidato_a_candidate_match(c, rank=i + 1)
                             for i, c in enumerate(candidatos)]
             })
@@ -121,6 +120,62 @@ class SearchMatchesService:
             "teamOverview": team_overview,
             "roleMatches": role_matches
         }
+
+    # ------------------------------------------------------------------
+    # Búsqueda con relajación progresiva del filtro duro
+    # ------------------------------------------------------------------
+    def _buscar_con_relajacion(
+        self,
+        ideal_dto: DTO_request_candidato_ideal,
+        excluir_ids: set
+    ):
+        """
+        Exigir a la vez todas las skills inferidas (nivel >= 3) suele dejar el
+        filtro duro vacío. Si no salen `top_k` candidatos, se relaja por pasos;
+        las skills que dejan de ser obligatorias siguen puntuando en el filtro
+        blando. Devuelve (candidatos, nombre_del_paso | None si no hizo falta).
+        """
+        obligatorias = [s for s in ideal_dto.skills if s.es_obligatoria]
+
+        def solo_primeras(n: int):
+            def aplicar(d):
+                for s in d.skills:
+                    if s.es_obligatoria and s not in obligatorias[:n]:
+                        s.es_obligatoria = False
+            return aplicar
+
+        def sin_skills_obligatorias(d):
+            for s in d.skills:
+                s.es_obligatoria = False
+
+        def sin_cert_ni_modalidad(d):
+            sin_skills_obligatorias(d)
+            d.certificaciones = []
+            d.modalidad_trabajo = None
+
+        pasos = [
+            (None, lambda d: None),
+            ("top2_skills_obligatorias", solo_primeras(2)),
+            ("top1_skill_obligatoria", solo_primeras(1)),
+            ("skills_solo_puntuan", sin_skills_obligatorias),
+            ("sin_certificaciones_ni_modalidad", sin_cert_ni_modalidad),
+        ]
+
+        mejor, mejor_paso = [], None
+        for nombre, aplicar in pasos:
+            d = copy.deepcopy(ideal_dto)
+            # identidad de skills tras deepcopy: se recalculan sobre la copia
+            obligatorias = [s for s in d.skills if s.es_obligatoria]
+            aplicar(d)
+            candidatos = self.candidatos_service.obtener_ranking_para_candidato_ideal(
+                ideal=d,
+                excluir_ids=excluir_ids
+            )
+            if len(candidatos) > len(mejor):
+                mejor, mejor_paso = candidatos, nombre
+            if len(candidatos) >= int(ideal_dto.top_k):
+                return candidatos, nombre
+        return mejor, mejor_paso
 
     # ------------------------------------------------------------------
     # Inferencia de perfiles ideales
