@@ -1,0 +1,15 @@
+{
+  "rol": "Especialista en ciberseguridad",
+  "descripcion_necesidad": "Refuerzo de ciberseguridad en el sector público: disponibilidad inmediata y mínimo 3 años de experiencia.",
+  "anios_experiencia_minimos": 3,
+  "disponibilidad": ["En banca"],
+  "sector": "Sector Público",
+  "skills": [
+    {"nombre": "SIEM", "nivel_minimo": 3, "anios_minimos": 1, "es_obligatoria": true},
+    {"nombre": "Pentesting", "nivel_minimo": 2, "anios_minimos": 0, "es_obligatoria": false}
+  ],
+  "idiomas": [{"idioma": "Inglés", "nivel_minimo": "B2"}],
+  "modalidad_trabajo": null,
+  "certificaciones": [],
+  "top_k": 10
+}
