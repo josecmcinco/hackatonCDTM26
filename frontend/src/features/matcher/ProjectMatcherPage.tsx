@@ -43,6 +43,8 @@ import { PersonAvatar, PersonName } from "@/components/shared/PersonAvatar";
 import { SkillChips } from "@/components/shared/SkillChips";
 import { StatusDot } from "@/components/shared/StatusDot";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { TeamOverviewSection } from "./TeamOverviewSection";
+import { toast } from "sonner";
 import {
   Search,
   Sparkles,
@@ -62,6 +64,10 @@ import {
   Globe,
   Languages,
   History,
+  CheckCircle2,
+  GraduationCap,
+  ArrowUpCircle,
+  Lock,
 } from "lucide-react";
 
 const SAMPLE_BRIEFS = [
@@ -73,7 +79,12 @@ const SAMPLE_BRIEFS = [
   {
     label: "Asistente IA para Retail",
     importance: "high" as ImportanceLevel,
-    text: "Proyecto de asistente conversacional con GenAI para cliente retail. Requerimos un Arquitecto GenAI con Python y Azure OpenAI (imprescindible) y un desarrollador Frontend React/TypeScript.",
+    text: "Proyecto de asistente conversacional con GenAI para cliente retail. Requerimos un Arquitecto GenAI con Python y Azure OpenAI (Voice Bots no es esencial) y un desarrollador Frontend React/TypeScript.",
+  },
+  {
+    label: "Refuerzo Ciberseguridad Sector Público",
+    importance: "critical" as ImportanceLevel,
+    text: "Refuerzo urgente de ciberseguridad en administración pública española (ENS / ISO 27001). Imprescindible disponibilidad inmediata (En banca) y mínimo 3 años de experiencia para Especialista ENS y Analista SOC.",
   },
 ];
 
@@ -140,10 +151,12 @@ function CandidateMatchCard({
   cand,
   rankLabel,
   isAlternative = false,
+  onPromoteToTop1,
 }: {
   cand: CandidateMatch;
   rankLabel?: string;
   isAlternative?: boolean;
+  onPromoteToTop1?: () => void;
 }) {
   const diff = isAlternative ? cand.comparisonVsTop1 : undefined;
 
@@ -153,7 +166,7 @@ function CandidateMatchCard({
         isAlternative ? "bg-background/80" : "bg-surface"
       }`}
     >
-      {/* Cabecera: Persona + Ranking + MatchRing */}
+      {/* Cabecera: Persona + Ranking + Riesgo salida Top 1 + MatchRing */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <PersonAvatar
@@ -161,7 +174,7 @@ function CandidateMatchCard({
             initials={cand.initials}
             size="lg"
           />
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
               {rankLabel && (
                 <Badge
@@ -177,25 +190,85 @@ function CandidateMatchCard({
                 id={cand.employee_id}
                 className="text-[20px] font-semibold text-foreground"
               />
+
+              {/* Badge de riesgo (%) de quitar a esta persona de su puesto/proyecto actual (en Top 1) */}
+              {!isAlternative && cand.removalRiskPct !== undefined && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant={
+                        cand.removalRiskPct >= 50
+                          ? "destructive"
+                          : cand.removalRiskPct >= 25
+                          ? "warning"
+                          : "secondary"
+                      }
+                      className="gap-1 text-xs tabular-nums"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      <span>Riesgo salida actual: {cand.removalRiskPct}%</span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Riesgo estimado de extraer a esta persona de su puesto o proyecto actual ({cand.disponibilidad})
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground">
               {cand.puesto_actual} · {cand.employee_id}
             </p>
-            <p className="text-xs text-foreground/90 pt-0.5">{cand.matchReason}</p>
-            {cand.riskFlag && (
-              <p className="inline-flex items-center gap-1 text-xs text-warning">
-                <AlertTriangle className="h-3 w-3 shrink-0" />
-                <span>Riesgo: {cand.riskFlag}</span>
+
+            {/* Fortaleza, Brechas (Gaps) y Riesgo explícitos */}
+            <div className="space-y-1 pt-0.5 text-xs">
+              <p className="text-foreground/90 flex items-start gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0 mt-0.5" />
+                <span>
+                  <strong className="font-semibold">Fortaleza:</strong> {cand.matchReason}
+                </span>
               </p>
-            )}
+
+              {cand.gaps.length > 0 && (
+                <p className="text-muted-foreground flex items-start gap-1.5">
+                  <InfoDot />
+                  <span>
+                    <strong className="font-semibold text-foreground/80">Brechas (Gaps):</strong>{" "}
+                    {cand.gaps.join(" · ")}
+                  </span>
+                </p>
+              )}
+
+              {cand.riskFlag && (
+                <p className="text-warning flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    <strong className="font-semibold">Riesgo:</strong> {cand.riskFlag}
+                  </span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Afinidad Global */}
-        <div className="flex items-center self-end md:self-start shrink-0">
-          <MatchRing score={cand.matchScore} size={58} strokeWidth={4.5} />
-          <DiffPctPill value={diff?.overallScorePct} />
+        {/* Afinidad Global + Botón promover si es alternativa */}
+        <div className="flex flex-col items-end gap-2 shrink-0 self-end md:self-start">
+          <div className="flex items-center">
+            <MatchRing score={cand.matchScore} size={58} strokeWidth={4.5} />
+            <DiffPctPill value={diff?.overallScorePct} />
+          </div>
+          {isAlternative && onPromoteToTop1 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onPromoteToTop1}
+              className="gap-1.5 text-xs h-8"
+            >
+              <ArrowUpCircle className="h-3.5 w-3.5 text-brand" />
+              <span>Seleccionar como titular</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -209,7 +282,6 @@ function CandidateMatchCard({
               <span>1. Factor Técnico</span>
             </span>
 
-            {/* Badge en Factor Técnico cuando es talento oculto */}
             {cand.isHiddenTalent && (
               <Badge variant="default" className="gap-1 text-xs">
                 <Sparkles className="h-3 w-3" />
@@ -239,7 +311,7 @@ function CandidateMatchCard({
               </span>
               <p className="font-medium text-foreground tabular-nums flex items-center flex-wrap">
                 <span>
-                  {cand.nivel_seniority} · {cand.anios_experiencia}a
+                  {cand.nivel_seniority} · {cand.anios_experiencia}a ({cand.anios_en_ntt}a NTT)
                 </span>
                 <DiffPctPill value={diff?.experiencePct} />
                 <DiffPctPill value={diff?.seniorityPct} />
@@ -297,9 +369,11 @@ function CandidateMatchCard({
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="space-y-0.5">
                 <span className="text-muted-foreground flex items-center gap-1">
-                  <Globe className="h-3 w-3" /> País
+                  <Globe className="h-3 w-3" /> Ubicación
                 </span>
-                <p className="font-medium text-foreground">{cand.pais}</p>
+                <p className="font-medium text-foreground">
+                  {cand.ciudad}, {cand.pais}
+                </p>
               </div>
 
               <div className="space-y-0.5">
@@ -319,8 +393,10 @@ function CandidateMatchCard({
               </div>
 
               <div className="space-y-0.5">
-                <span className="text-muted-foreground">Modalidad</span>
-                <p className="font-medium text-foreground">{cand.modalidad_trabajo}</p>
+                <span className="text-muted-foreground">Modalidad / Movilidad</span>
+                <p className="font-medium text-foreground">
+                  {cand.modalidad_trabajo} · {cand.movilidad_internacional ? "Movilidad int." : "Local"}
+                </p>
               </div>
 
               <div className="space-y-0.5">
@@ -385,9 +461,46 @@ function CandidateMatchCard({
             </div>
           </div>
         </div>
+
+        {/* Desplegable compacto con el resto de campos del parquet (estudios, metodologías, proyectos) */}
+        <Collapsible className="pt-1">
+          <CollapsibleTrigger className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">
+            <GraduationCap className="h-3.5 w-3.5" />
+            <span>Ver formación, metodologías y proyectos previos</span>
+            <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-border/40 mt-2">
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground">Formación</span>
+              {cand.estudios.map((e, i) => (
+                <p key={i} className="text-foreground">
+                  {e.nivel} en {e.titulo} ({e.institucion}, {e.anio_fin})
+                </p>
+              ))}
+            </div>
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground">Metodologías y Soft Skills</span>
+              <p className="text-foreground">
+                {[...cand.metodologias, ...cand.habilidades_blandas].join(" · ")}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground">Proyectos previos</span>
+              {cand.proyectos.map((p, i) => (
+                <p key={i} className="text-foreground">
+                  {p.nombre} ({p.cliente_sector}, {p.anio})
+                </p>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </Card>
   );
+}
+
+function InfoDot() {
+  return <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground shrink-0 mt-1.5" />;
 }
 
 export function ProjectMatcherPage() {
@@ -414,6 +527,26 @@ export function ProjectMatcherPage() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePromoteCandidate = (roleId: string, employeeId: string) => {
+    if (!result) return;
+    let promotedName = "";
+    const updatedGroups = result.roleMatches.map((group) => {
+      if (group.roleId !== roleId) return group;
+      const target = group.matches.find((m) => m.employee_id === employeeId);
+      if (!target) return group;
+      promotedName = target.nombre_completo;
+      const others = group.matches.filter((m) => m.employee_id !== employeeId);
+      return {
+        ...group,
+        matches: [{ ...target, rank: 1, removalRiskPct: target.removalRiskPct ?? 20 }, ...others],
+      };
+    });
+    setResult({ ...result, roleMatches: updatedGroups });
+    if (promotedName) {
+      toast.success(`${promotedName} seleccionado como titular (Top 1)`);
     }
   };
 
@@ -568,12 +701,25 @@ export function ProjectMatcherPage() {
                         {result.idealProfiles.map((ideal: IdealProfile) => (
                           <TableRow key={ideal.roleId} className="cursor-default">
                             <TableCell>
-                              <div className="flex flex-col gap-1 py-1.5">
+                              <div className="flex flex-col gap-1.5 py-1.5">
                                 <span className="font-semibold text-sm text-foreground">
                                   {ideal.roleName}
                                 </span>
-                                <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <ImportanceIndicator level={ideal.inferredImportance} />
+                                  {ideal.implicitRequirements.length > 0 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant="outline" className="text-[11px] gap-1 text-brand border-brand/30">
+                                          <Sparkles className="h-2.5 w-2.5" />
+                                          <span>Implícito</span>
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs">
+                                        Requisitos implícitos detectados: {ideal.implicitRequirements.join(" · ")}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
                                 </div>
                               </div>
                             </TableCell>
@@ -637,9 +783,23 @@ export function ProjectMatcherPage() {
                             </TableCell>
 
                             <TableCell>
-                              <div className="inline-flex items-center gap-1.5">
-                                <Code2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <SkillChips skills={ideal.requiredSkills} maxVisible={2} />
+                              <div className="flex flex-col gap-1">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <Code2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  <SkillChips skills={ideal.requiredSkills} maxVisible={2} />
+                                </div>
+                                {ideal.desirableSkills.length > 0 && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-[11px] text-muted-foreground truncate max-w-[190px] pl-5">
+                                        Opcional: {ideal.desirableSkills.join(", ")}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Deseable (no esencial — no actúa como filtro): {ideal.desirableSkills.join(", ")}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                               </div>
                             </TableCell>
 
@@ -678,6 +838,12 @@ export function ProjectMatcherPage() {
                                 <span className="text-[11px] text-muted-foreground">
                                   {ideal.availabilityRequired}
                                 </span>
+                                {ideal.hardFilterSummary && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-brand font-medium pt-0.5">
+                                    <Lock className="h-2.5 w-2.5" />
+                                    <span>{ideal.hardFilterSummary}</span>
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -691,7 +857,14 @@ export function ProjectMatcherPage() {
           </section>
         </BlurFade>
 
-        {/* 2. SECCIÓN: MATCHES (1 Top 1 por perfil + desplegable de alternativas ordenadas con % vs Top 1) */}
+        {/* 2. OVERVIEW DEL EQUIPO PROPUESTO (luego de Ideal Profiles) */}
+        {result && !loading && (
+          <BlurFade delay={0.11}>
+            <TeamOverviewSection overview={result.teamOverview} />
+          </BlurFade>
+        )}
+
+        {/* 3. SECCIÓN: MATCHES (1 Top 1 por perfil + desplegable de alternativas ordenadas con % vs Top 1) */}
         {result && !loading && (
           <BlurFade delay={0.14}>
             <section aria-labelledby="matches-heading" className="space-y-8">
@@ -755,8 +928,11 @@ export function ProjectMatcherPage() {
                               <CandidateMatchCard
                                 key={alt.employee_id}
                                 cand={alt}
-                                rankLabel={`#${alt.rank ?? idx + 2}`}
+                                rankLabel={`#${idx + 2}`}
                                 isAlternative={true}
+                                onPromoteToTop1={() =>
+                                  handlePromoteCandidate(group.roleId, alt.employee_id)
+                                }
                               />
                             ))}
                           </CollapsibleContent>
@@ -765,6 +941,11 @@ export function ProjectMatcherPage() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Nota de honestidad / transparencia de demo */}
+              <div className="p-4 rounded-[12px] border border-border/60 bg-neutral-50/50 dark:bg-neutral-900/30 text-xs text-muted-foreground">
+                <strong className="text-foreground">Nota de transparencia (Demo):</strong> Los perfiles técnicos se basan en el esquema de <code className="text-foreground">profiles.parquet</code>. Las métricas de conformidad actual (<em>Open to change</em>), sinergia histórica (<em>Partner matched</em>) y roles Belbin son simulaciones inferidas sobre dicho esquema para esta demostración frontend.
               </div>
             </section>
           </BlurFade>
