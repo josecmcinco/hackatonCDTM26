@@ -13,6 +13,8 @@ class DTO_request_obtener_candidatos:
 
     `ponderaciones` define el peso de cada campo del perfil en el filtro blando
     (ver DTO_ponderacion_filtro_blando). Se aplica a todos los roles del request.
+    Incluye campos de perfiles, de feedback y `compatibilidad_equipo`, que se
+    calcula con la matriz de relaciones frente al resto de integrantes del equipo.
     """
     candidatos_ideales: List[DTO_request_candidato_ideal] = field(default_factory=list)
     nombre_proyecto: Optional[str] = None
