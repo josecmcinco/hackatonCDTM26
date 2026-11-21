@@ -12,27 +12,29 @@ class DTO_ponderacion_filtro_blando:
       datos personales (employee_id, nombre, apellidos, nombre_completo, email)
       y las columnas redundantes (skills_texto se deriva de skills,
       fecha_incorporacion equivale a anios_en_ntt).
-    - Los nombres coinciden con las columnas del parquet para poder iterar
-      sobre ellos directamente en el servicio.
+    - Además, campos de las bases ficticias de dataAnalysis/Ficticio:
+      feedback.parquet (interes_cambio, puesto_objetivo, distancia_rol) y
+      relaciones.parquet (compatibilidad_equipo).
+    - Cada nombre corresponde a una función de puntuación de
+      dataAnalysis/FiltroBlando/filtro_blando.py (diccionario FACTORES).
     - Los pesos son números >= 0 en cualquier escala: se normalizan con
       `normalizadas()` para que sumen 1. Un peso 0 desactiva ese campo
       en el filtro blando.
-    - Los valores por defecto reproducen el scoring actual de
-      CandidatosService (skills 50, experiencia 20, sector 15, idiomas 15).
+    - Los valores por defecto son los de dataAnalysis/FiltroBlando/ponderaciones.json.
     """
     # Rol y puesto
-    area: float = 0.0
-    rol: float = 0.0
+    area: float = 2.0
+    rol: float = 9.0
     nivel_seniority: float = 0.0
     puesto_actual: float = 0.0
 
     # Experiencia (anios_experiencia también es filtro duro; aquí puntúa el exceso sobre el mínimo)
-    anios_experiencia: float = 20.0
+    anios_experiencia: float = 8.0
     anios_en_ntt: float = 0.0
 
     # Sector, disponibilidad y condiciones de trabajo
-    sector_principal: float = 15.0
-    disponibilidad: float = 0.0          # También filtro duro; aquí puede premiar "En banca" frente a "Roll-off"
+    sector_principal: float = 10.0
+    disponibilidad: float = 4.0          # También filtro duro; aquí premia "En banca" frente a "Roll-off"
     modalidad_trabajo: float = 0.0
     movilidad_internacional: float = 0.0
 
@@ -41,19 +43,27 @@ class DTO_ponderacion_filtro_blando:
     ciudad: float = 0.0
 
     # Competencias
-    skills: float = 50.0
-    metodologias: float = 0.0
-    habilidades_blandas: float = 0.0
-    idiomas: float = 15.0
-    certificaciones: float = 0.0
+    skills: float = 30.0
+    metodologias: float = 1.0
+    habilidades_blandas: float = 1.0
+    idiomas: float = 5.0
+    certificaciones: float = 6.0
 
     # Trayectoria y formación
-    estudios: float = 0.0
-    experiencia: float = 0.0
-    proyectos: float = 0.0
+    estudios: float = 1.0
+    experiencia: float = 4.0
+    proyectos: float = 8.0
 
     # Texto libre (p. ej. similitud semántica con la descripción de la necesidad)
     resumen: float = 0.0
+
+    # Feedback (dataAnalysis/Ficticio/feedback.parquet)
+    interes_cambio: float = 2.0
+    puesto_objetivo: float = 2.0
+    distancia_rol: float = 1.0
+
+    # Relaciones (dataAnalysis/Ficticio/relaciones.parquet)
+    compatibilidad_equipo: float = 6.0
 
     def __post_init__(self):
         for f in fields(self):

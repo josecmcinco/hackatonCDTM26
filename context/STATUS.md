@@ -14,6 +14,7 @@ Conectar la API del backend con el frontend en React y preparar la vista de matc
 - Implementados y validados los endpoints `POST /api/candidatos/matching`, `POST /api/candidatos/equipo` y `GET /api/candidatos/<id>`.
 - Creada la capa de herramientas (`backend/tools/`) con esquemas y despacho para Function Calling con Gemini.
 - Implementado el módulo de transcripción asíncrona de voz (`transcripcion_controller.py` y `transcripcion_service.py`) con soporte para streaming de fragmentos mientras el usuario habla y cierre final.
+- Conectados el filtro duro (`dataAnalysis/FiltroDuro/filtro_duro.py`) y el filtro blando (`dataAnalysis/FiltroBlando/filtro_blando.py`) a `CandidatosService`: `POST /api/candidatos/equipo` y `/matching` aplican las `ponderaciones` del request y devuelven `desglose_score` por candidato. `DTO_ponderacion_filtro_blando` incluye feedback y relaciones; sus valores por defecto son los de `ponderaciones.json`.
 
 ## En curso
 - 

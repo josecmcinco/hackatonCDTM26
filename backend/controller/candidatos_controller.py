@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from service import CandidatosService
-from dto import DTO_request_candidato_ideal, DTO_request_obtener_candidatos
+from dto import DTO_request_candidato_ideal, DTO_request_obtener_candidatos, DTO_ponderacion_filtro_blando
 
 candidatos_bp = Blueprint("candidatos", __name__, url_prefix="/api/candidatos")
 service = CandidatosService()
@@ -10,17 +10,26 @@ service = CandidatosService()
 def buscar_candidatos_individual():
     """
     Endpoint para buscar y clasificar los mejores candidatos para un único rol ideal.
-    Espera un JSON compatible con DTO_request_candidato_ideal.
+    Espera un JSON compatible con DTO_request_candidato_ideal y, opcionalmente:
+      - "ponderaciones" (o "pesos"): pesos del filtro blando (DTO_ponderacion_filtro_blando).
+      - "equipo_actual": employee_id ya elegidos (no compiten y se usan en compatibilidad_equipo).
     """
     try:
         data = request.get_json() or {}
         dto = DTO_request_candidato_ideal.from_dict(data)
-        
-        candidatos = service.obtener_ranking_para_candidato_ideal(dto)
+        ponderaciones = DTO_ponderacion_filtro_blando.from_dict(data.get("ponderaciones", data.get("pesos")))
+        equipo_actual = [str(e) for e in (data.get("equipo_actual") or [])]
+
+        resultado = service.evaluar_rol(dto, ponderaciones=ponderaciones, equipo_actual=equipo_actual)
         return jsonify({
             "status": "success",
-            "total": len(candidatos),
-            "candidatos": candidatos
+            "total": len(resultado["candidatos"]),
+            "total_filtro_duro": resultado["total_filtro_duro"],
+            "total_filtro_blando": resultado["total_filtro_blando"],
+            "preseleccion_aplicada": resultado["preseleccion_aplicada"],
+            "factores_usados": resultado["factores_usados"],
+            "factores_no_aplicables": resultado["factores_no_aplicables"],
+            "candidatos": resultado["candidatos"]
         }), 200
     except Exception as e:
         return jsonify({
