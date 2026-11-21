@@ -505,14 +505,23 @@ function InfoDot() {
   return <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground shrink-0 mt-1.5" />;
 }
 
+// Fases del flujo de 2 pasos
+type FlowPhase = "idle" | "profiles_ready" | "matches_ready";
+
 export function ProjectMatcherPage() {
   const [projectImportance, setProjectImportance] =
     useState<ImportanceLevel>("critical");
   const [description, setDescription] = useState<string>(SAMPLE_BRIEFS[0].text);
-  const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState<FlowPhase>("idle");
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [loadingMatches, setLoadingMatches] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inferredProfiles, setInferredProfiles] = useState<import("@/types").IdealProfile[] | null>(null);
   const [result, setResult] = useState<ProjectSearchResponse | null>(null);
+
+  // Alias para compatibilidad con lógica de render existente
+  const loading = loadingProfiles || loadingMatches;
 
   const handleToggleMic = () => {
     if (isListening) {
@@ -537,28 +546,49 @@ export function ProjectMatcherPage() {
     }, 1800);
   };
 
+  // PASO 1: Inferir perfiles ideales
+  const handleAnalyzeRoles = async () => {
+    if (!description.trim()) return;
+    try {
+      setLoadingProfiles(true);
+      setError(null);
+      setInferredProfiles(null);
+      setResult(null);
+      setPhase("idle");
+      const profiles = await api.inferProfiles({ description, projectImportance });
+      setInferredProfiles(profiles);
+      setPhase("profiles_ready");
+      toast.success(`${profiles.length} perfil${profiles.length !== 1 ? "es" : ""} inferido${profiles.length !== 1 ? "s" : ""}. Revísalos y busca candidatos.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al analizar roles.");
+    } finally {
+      setLoadingProfiles(false);
+    }
+  };
+
+  // PASO 2: Buscar candidatos reales para los perfiles ya inferidos
   const handleSearchMatches = async () => {
     if (!description.trim()) return;
     try {
-      setLoading(true);
+      setLoadingMatches(true);
       setError(null);
-      const data = await api.searchMatches({
-        description,
-        projectImportance,
-      });
+      const data = await api.searchMatches(
+        { description, projectImportance },
+        inferredProfiles ?? undefined
+      );
       setResult(data);
+      setPhase("matches_ready");
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "Error al buscar coincidencias."
       );
     } finally {
-      setLoading(false);
+      setLoadingMatches(false);
     }
   };
 
   const handlePromoteCandidate = (roleId: string, employeeId: string) => {
-    if (!result) return;
-    let promotedName = "";
+    if (!result) return;    let promotedName = "";
     const updatedGroups = result.roleMatches.map((group) => {
       if (group.roleId !== roleId) return group;
       const target = group.matches.find((m) => m.employee_id === employeeId);
@@ -662,7 +692,7 @@ export function ProjectMatcherPage() {
                 />
               </div>
 
-              {/* Botón de micro + botón único primario: search matches */}
+              {/* Botón de micro + 2 botones de flujo separados */}
               <div className="flex items-center justify-end gap-3">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -687,21 +717,42 @@ export function ProjectMatcherPage() {
                   </TooltipContent>
                 </Tooltip>
 
+                {/* Paso 1: Analizar roles */}
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  onClick={handleAnalyzeRoles}
+                  disabled={loading || !description.trim()}
+                  className="gap-2 font-semibold shadow-soft"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>{loadingProfiles ? "Analizando roles..." : "Analizar roles"}</span>
+                </Button>
+
+                {/* Paso 2: Buscar personas (habilitado solo cuando hay perfiles inferidos) */}
                 <Button
                   type="button"
                   size="lg"
                   onClick={handleSearchMatches}
-                  disabled={loading || !description.trim()}
+                  disabled={loading || !description.trim() || phase === "idle"}
                   className="gap-2 font-semibold shadow-soft"
                 >
                   <Search className="h-4 w-4" />
-                  <span>{loading ? "Buscando perfiles..." : "search matches"}</span>
+                  <span>{loadingMatches ? "Buscando personas..." : "Buscar personas"}</span>
                 </Button>
               </div>
             </Card>
 
-            {/* Estado de carga */}
-            {loading && (
+            {/* Estado de carga paso 1: Analizar roles */}
+            {loadingProfiles && (
+              <div className="space-y-4">
+                <Skeleton className="h-32 w-full rounded-[16px]" />
+              </div>
+            )}
+
+            {/* Estado de carga paso 2: Buscar personas */}
+            {loadingMatches && (
               <div className="space-y-4">
                 <Skeleton className="h-56 w-full rounded-[16px]" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -713,11 +764,13 @@ export function ProjectMatcherPage() {
 
             {/* Estado de error */}
             {error && !loading && (
-              <ErrorState message={error} onRetry={handleSearchMatches} />
+              <ErrorState message={error} onRetry={handleAnalyzeRoles} />
             )}
 
-            {/* SUB-COMPONENTE: IDEAL PROFILES */}
-            {result && !loading && (
+            {/* SUB-COMPONENTE: IDEAL PROFILES — visible desde el paso 1 */}
+            {(inferredProfiles || result?.idealProfiles) && !loading && (() => {
+              const profiles = result?.idealProfiles ?? inferredProfiles ?? [];
+              return (
               <BlurFade delay={0.08}>
                 <div className="space-y-4 pt-2">
                   <div className="flex items-center justify-between">
@@ -727,11 +780,29 @@ export function ProjectMatcherPage() {
                       </h2>
                       <p className="text-xs text-muted-foreground">
                         Perfiles inferidos automáticamente desde la descripción con sus dimensiones de emparejamiento e importancia.
+                        {phase === "profiles_ready" && (
+                          <span className="ml-1 text-brand font-medium">· Revísalos y pulsa «Buscar personas» para encontrar candidatos.</span>
+                        )}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="text-xs">
-                      {result.idealProfiles.length} perfiles requeridos
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {profiles.length} perfiles requeridos
+                      </Badge>
+                      {/* Botón rápido de buscar personas inline en la cabecera de perfiles */}
+                      {phase === "profiles_ready" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleSearchMatches}
+                          disabled={loadingMatches}
+                          className="gap-1.5 text-xs h-8 font-semibold"
+                        >
+                          <Search className="h-3.5 w-3.5" />
+                          <span>{loadingMatches ? "Buscando..." : "Buscar personas"}</span>
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="rounded-[16px] border border-border bg-surface shadow-soft overflow-hidden">
@@ -747,7 +818,7 @@ export function ProjectMatcherPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {result.idealProfiles.map((ideal: IdealProfile) => (
+                        {profiles.map((ideal: IdealProfile) => (
                           <TableRow key={ideal.roleId} className="cursor-default">
                             <TableCell>
                               <div className="flex flex-col gap-1.5 py-1.5">
@@ -902,7 +973,8 @@ export function ProjectMatcherPage() {
                   </div>
                 </div>
               </BlurFade>
-            )}
+              );
+            })()}
           </section>
         </BlurFade>
 

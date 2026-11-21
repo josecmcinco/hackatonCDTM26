@@ -1,7 +1,7 @@
-import { ProjectSearchRequest, ProjectSearchResponse } from '../types';
+import { ProjectSearchRequest, ProjectSearchResponse, IdealProfile } from '../types';
 import { generateMockProjectSearch } from '../mock/data';
 
-const USE_MOCK = true; // Cambiar a false cuando el backend Flask de José esté levantado
+const USE_MOCK = false; // Backend Flask activo en localhost:5000
 const API_BASE_URL = 'http://localhost:5000/api';
 
 function simulateLatency(ms = 500): Promise<void> {
@@ -10,21 +10,50 @@ function simulateLatency(ms = 500): Promise<void> {
 
 export const api = {
   /**
-   * Envía la descripción del proyecto y su importancia para obtener:
-   * 1) Los perfiles ideales inferidos (Ideal Profiles)
-   * 2) Los candidatos emparejados por cada puesto (Matches)
+   * Paso 1: Solo infiere los perfiles ideales (roles, skills, filtros duros)
+   * sin buscar candidatos reales todavía.
    */
-  async searchMatches(payload: ProjectSearchRequest): Promise<ProjectSearchResponse> {
+  async inferProfiles(payload: ProjectSearchRequest): Promise<IdealProfile[]> {
+    if (USE_MOCK) {
+      await simulateLatency(400);
+      return generateMockProjectSearch(payload).idealProfiles;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/projects/infer-profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Error del servidor: ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data.idealProfiles as IdealProfile[];
+  },
+
+  /**
+   * Paso 2: Dado un payload (y opcionalmente los perfiles ya inferidos),
+   * obtiene los candidatos reales del parquet para cada rol.
+   */
+  async searchMatches(
+    payload: ProjectSearchRequest,
+    idealProfiles?: IdealProfile[]
+  ): Promise<ProjectSearchResponse> {
     if (USE_MOCK) {
       await simulateLatency(550);
       return generateMockProjectSearch(payload);
     }
 
-    // TODO: Endpoint real implementado por José en Flask
+    const body = idealProfiles
+      ? { ...payload, idealProfiles }
+      : payload;
+
     const res = await fetch(`${API_BASE_URL}/projects/search-matches`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
