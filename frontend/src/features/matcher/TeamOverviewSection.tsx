@@ -1,4 +1,5 @@
-import { TeamOverviewMetrics } from "@/types";
+import { TeamOverviewMetrics, RoleMatchGroup, CandidateMatch } from "@/types";
+import { Top1ProfileCarousel } from "./Top1ProfileCarousel";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -20,9 +21,15 @@ import { Sparkles, TrendingUp, Info, Target } from "lucide-react";
 
 interface TeamOverviewSectionProps {
   overview: TeamOverviewMetrics;
+  roleMatches?: RoleMatchGroup[];
+  onViewCandidate?: (roleId: string, candidate: CandidateMatch) => void;
 }
 
-export function TeamOverviewSection({ overview }: TeamOverviewSectionProps) {
+export function TeamOverviewSection({
+  overview,
+  roleMatches = [],
+  onViewCandidate,
+}: TeamOverviewSectionProps) {
   const dimensionsOrder: Array<
     "Factor Técnico" | "Factor Logístico" | "Factor Histórico"
   > = ["Factor Técnico", "Factor Logístico", "Factor Histórico"];
@@ -40,6 +47,14 @@ export function TeamOverviewSection({ overview }: TeamOverviewSectionProps) {
           Predicción de rendimiento conjunto según metodología Belbin, cumplimiento por dimensiones y desglose cuantificado de cada factor.
         </p>
       </div>
+
+      {/* 0. SLIDER RESUMEN DE CANDIDATOS TOP 1 POR PUESTO */}
+      {roleMatches.length > 0 && (
+        <Top1ProfileCarousel
+          roleMatches={roleMatches}
+          onViewCandidate={onViewCandidate}
+        />
+      )}
 
       {/* 1. DOS INDICADORES TIPO DASHBOARD EN GRANDE */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

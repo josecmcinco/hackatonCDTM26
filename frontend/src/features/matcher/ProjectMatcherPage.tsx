@@ -149,81 +149,165 @@ function DiffPctPill({ value }: { value?: number }) {
   );
 }
 
-function CandidateMatchCard({
-  cand,
-  rankLabel,
-  isAlternative = false,
-  onPromoteToTop1,
-}: {
-  cand: CandidateMatch;
-  rankLabel?: string;
-  isAlternative?: boolean;
-  onPromoteToTop1?: () => void;
-}) {
-  const diff = isAlternative ? cand.comparisonVsTop1 : undefined;
+/**
+ * Calcula los porcentajes estimados para las 3 dimensiones conceptuales:
+ * 1. Factor Técnico (skills, certificaciones, seniority)
+ * 2. Factor Logístico (disponibilidad, modalidad, idiomas)
+ * 3. Factor Histórico (conformidad y sinergia con compañeros)
+ */
+function computeCandidateFactorPercentages(cand: CandidateMatch) {
+  const avgSkillLevel =
+    cand.skills.length > 0
+      ? cand.skills.reduce((acc, s) => acc + s.nivel, 0) / cand.skills.length
+      : 3;
+  const certBonus = Math.min(10, cand.certificaciones.length * 5);
+  const techPct = Math.min(
+    100,
+    Math.max(45, Math.round(cand.matchScore * 0.75 + (avgSkillLevel / 5) * 20 + certBonus - 5))
+  );
+
+  let logPct =
+    cand.disponibilidad === "En banca"
+      ? 96
+      : cand.disponibilidad === "Roll-off próximo (<3 meses)"
+      ? 82
+      : 55;
+  if (cand.idiomas.length >= 2) logPct = Math.min(100, logPct + 4);
+  if (cand.movilidad_internacional) logPct = Math.min(100, logPct + 2);
+
+  const conformityFactor =
+    cand.conformidadActual < 70 ? 86 : Math.round(cand.conformidadActual * 0.85);
+  const partnerBonus = cand.matchPartners.length > 0 ? 12 : 0;
+  const histPct = Math.min(100, Math.max(40, conformityFactor + partnerBonus));
+
+  return { techPct, logPct, histPct };
+}
+
+/**
+ * Tarjeta Top 1 minimalista con desplegable para detalles finos
+ * y los 3 factores destacados con colores distintos.
+ */
+function Top1CandidateCard({ cand }: { cand: CandidateMatch }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { techPct, logPct, histPct } = computeCandidateFactorPercentages(cand);
 
   return (
-    <Card
-      className={`p-6 border-border shadow-soft space-y-5 ${
-        isAlternative ? "bg-background/80" : "bg-surface"
-      }`}
-    >
-      {/* Cabecera: Persona + Ranking + Riesgo salida Top 1 + MatchRing */}
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <PersonAvatar
-            name={cand.nombre_completo}
-            initials={cand.initials}
-            size="lg"
-          />
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              {rankLabel && (
-                <Badge
-                  variant={isAlternative ? "outline" : "default"}
-                  className="text-xs font-semibold tabular-nums"
-                >
-                  {rankLabel}
+    <div className="space-y-2.5">
+      {/* Disclaimer de selección Top 1 (1 línea máximo) */}
+      <div className="flex items-center gap-2 rounded-xl border border-brand/20 bg-brand/[0.05] px-3.5 py-2 text-xs text-foreground/90 shadow-2xs">
+        <Sparkles className="h-3.5 w-3.5 text-brand shrink-0" />
+        <p className="truncate">
+          <strong className="font-semibold text-brand">Elegido como Top 1:</strong>{" "}
+          {cand.matchReason ||
+            `Mayor afinidad técnica en ${cand.area} (${cand.matchScore}%), disponibilidad ${cand.disponibilidad} y riesgo de salida controlado (${cand.removalRiskPct ?? 15}%).`}
+        </p>
+      </div>
+
+      <Card className="p-5 border-border bg-surface shadow-soft space-y-4">
+        {/* Cabecera minimalista: datos clave, factores y MatchRing */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <PersonAvatar
+              name={cand.nombre_completo}
+              initials={cand.initials}
+              size="lg"
+            />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="default" className="text-xs font-semibold tabular-nums">
+                  Top 1
                 </Badge>
-              )}
 
-              <PersonName
-                name={cand.nombre_completo}
-                id={cand.employee_id}
-                className="text-[20px] font-semibold text-foreground"
-              />
+                <PersonName
+                  name={cand.nombre_completo}
+                  id={cand.employee_id}
+                  className="text-[19px] font-semibold text-foreground"
+                />
 
-              {/* Badge de riesgo (%) de quitar a esta persona de su puesto/proyecto actual (en Top 1) */}
-              {!isAlternative && cand.removalRiskPct !== undefined && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge
-                      variant={
-                        cand.removalRiskPct >= 50
-                          ? "destructive"
-                          : cand.removalRiskPct >= 25
-                          ? "warning"
-                          : "secondary"
-                      }
-                      className="gap-1 text-xs tabular-nums"
-                    >
-                      <AlertTriangle className="h-3 w-3" />
-                      <span>Riesgo salida actual: {cand.removalRiskPct}%</span>
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Riesgo estimado de extraer a esta persona de su puesto o proyecto actual ({cand.disponibilidad})
-                  </TooltipContent>
-                </Tooltip>
-              )}
+                {cand.removalRiskPct !== undefined && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant={
+                          cand.removalRiskPct >= 50
+                            ? "destructive"
+                            : cand.removalRiskPct >= 25
+                            ? "warning"
+                            : "secondary"
+                        }
+                        className="gap-1 text-xs tabular-nums"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>Riesgo salida actual: {cand.removalRiskPct}%</span>
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Riesgo estimado de extraer a esta persona de su puesto o proyecto actual ({cand.disponibilidad})
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+
+                {cand.isHiddenTalent && (
+                  <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 text-[11px] font-medium">
+                    <Sparkles className="h-3 w-3" />
+                    <span>Hidden talent detected</span>
+                  </Badge>
+                )}
+
+                {cand.matchPartners.length > 0 && (
+                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 text-[11px] font-medium">
+                    <Users className="h-3 w-3" />
+                    <span>Partner matched</span>
+                  </Badge>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                {cand.puesto_actual} · {cand.nivel_seniority} · {cand.disponibilidad} · {cand.anios_experiencia} años exp.
+              </p>
+
+              {/* Porcentajes de los 3 factores en colores distintos */}
+              <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                <span className="inline-flex items-center rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 tabular-nums">
+                  Técnico: <strong className="ml-1 font-semibold">{techPct}%</strong>
+                </span>
+
+                <span className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">
+                  Logístico: <strong className="ml-1 font-semibold">{logPct}%</strong>
+                </span>
+
+                <span className="inline-flex items-center rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300 tabular-nums">
+                  Histórico: <strong className="ml-1 font-semibold">{histPct}%</strong>
+                </span>
+              </div>
             </div>
+          </div>
 
-            <p className="text-xs text-muted-foreground">
-              {cand.puesto_actual} · {cand.employee_id}
-            </p>
+          {/* Afinidad Global + Flecha desplegable de detalles */}
+          <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+            <MatchRing score={cand.matchScore} size={54} strokeWidth={4.5} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="gap-1.5 text-xs h-8 text-foreground"
+            >
+              <span>{isExpanded ? "Ocultar detalles" : "Ver detalles"}</span>
+              <ChevronDown
+                className={`h-4 w-4 transition-transform duration-200 ${
+                  isExpanded ? "rotate-180" : ""
+                }`}
+              />
+            </Button>
+          </div>
+        </div>
 
-            {/* Fortaleza, Brechas (Gaps) y Riesgo explícitos */}
-            <div className="space-y-1 pt-0.5 text-xs">
+        {/* DETALLES FINOS (visibles al desplegar la flecha) */}
+        {isExpanded && (
+          <div className="space-y-4 pt-3 border-t border-border/60">
+            {/* Fortaleza, Brechas (Gaps) y Riesgo */}
+            <div className="space-y-1.5 text-xs">
               <p className="text-foreground/90 flex items-start gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0 mt-0.5" />
                 <span>
@@ -250,252 +334,318 @@ function CandidateMatchCard({
                 </p>
               )}
             </div>
+
+            {/* 3 FACTORES AGRUPADOS CON COLORES DISTINTOS */}
+            <div className="space-y-3.5">
+              {/* 1. FACTOR TÉCNICO (Color Azul) */}
+              <div className="rounded-[12px] border border-blue-500/30 bg-blue-500/[0.04] dark:bg-blue-950/20 p-4 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                    <Code2 className="h-3.5 w-3.5 text-blue-500" />
+                    <span>1. Factor Técnico ({techPct}%)</span>
+                  </span>
+
+                  {cand.isHiddenTalent && (
+                    <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 text-xs">
+                      <Sparkles className="h-3 w-3" />
+                      <span>Hidden talent detected</span>
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Layers className="h-3 w-3 text-blue-500" /> Área
+                    </span>
+                    <p className="font-medium text-foreground">{cand.area}</p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Briefcase className="h-3 w-3 text-blue-500" /> Rol
+                    </span>
+                    <p className="font-medium text-foreground">{cand.rol}</p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Award className="h-3 w-3 text-blue-500" /> Seniority y Exp.
+                    </span>
+                    <p className="font-medium text-foreground tabular-nums">
+                      {cand.nivel_seniority} · {cand.anios_experiencia}a ({cand.anios_en_ntt}a NTT)
+                    </p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Building2 className="h-3 w-3 text-blue-500" /> Sector principal
+                    </span>
+                    <p className="font-medium text-foreground">{cand.sector_principal}</p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <ShieldCheck className="h-3 w-3 text-blue-500" /> Certificaciones
+                    </span>
+                    <p className="font-medium text-foreground truncate max-w-[140px]">
+                      {cand.certificaciones.length > 0
+                        ? cand.certificaciones.map((c) => `${c.nombre} (${c.anio})`).join(", ")
+                        : "Sin certificaciones"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap pt-1 text-xs">
+                  <span className="text-muted-foreground font-medium">Skills:</span>
+                  {cand.skills.map((s) => (
+                    <Badge
+                      key={s.skill}
+                      variant="secondary"
+                      className="font-normal text-xs bg-surface border-blue-500/20 tabular-nums"
+                    >
+                      {s.skill} · N{s.nivel} ({s.anios}a)
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. FACTOR LOGÍSTICO (Color Esmeralda/Verde) + 3. FACTOR HISTÓRICO (Color Violeta/Morado) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 2. FACTOR LOGÍSTICO */}
+                <div className="rounded-[12px] border border-emerald-500/30 bg-emerald-500/[0.04] dark:bg-emerald-950/20 p-4 space-y-3">
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>2. Factor Logístico ({logPct}%)</span>
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-0.5">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <Globe className="h-3 w-3 text-emerald-500" /> Ubicación
+                      </span>
+                      <p className="font-medium text-foreground">
+                        {cand.ciudad}, {cand.pais}
+                      </p>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-muted-foreground">Disponibilidad</span>
+                      <div>
+                        <StatusDot
+                          status={
+                            cand.disponibilidad === "En banca"
+                              ? "approved"
+                              : cand.disponibilidad === "Asignado"
+                              ? "rejected"
+                              : "matching"
+                          }
+                          label={cand.disponibilidad}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-muted-foreground">Modalidad / Movilidad</span>
+                      <p className="font-medium text-foreground">
+                        {cand.modalidad_trabajo} · {cand.movilidad_internacional ? "Movilidad int." : "Local"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <Languages className="h-3 w-3 text-emerald-500" /> Idiomas
+                      </span>
+                      <p className="font-medium text-foreground">
+                        {cand.idiomas.map((i) => `${i.idioma} (${i.nivel})`).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. FACTOR HISTÓRICO */}
+                <div className="rounded-[12px] border border-violet-500/30 bg-violet-500/[0.04] dark:bg-violet-950/20 p-4 space-y-3">
+                  <span className="text-xs font-semibold text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5 text-violet-500" />
+                    <span>3. Factor Histórico ({histPct}%)</span>
+                  </span>
+
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Conformidad puesto actual</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {cand.conformidadActual}%
+                        </span>
+                        {cand.conformidadActual < 70 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="warning" className="gap-1 text-xs">
+                                <RefreshCw className="h-3 w-3" />
+                                <span>Open to change</span>
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Conformidad &lt; 70% en encuestas internas: abierto a cambiar de proyecto
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-violet-500/20">
+                      <span className="text-muted-foreground">Sinergia con equipo</span>
+                      {cand.matchPartners.length > 0 ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="success" className="gap-1 text-xs">
+                              <Users className="h-3 w-3" />
+                              <span>Partner matched</span>
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Compañero en proyectos exitosos previos con: {cand.matchPartners.join(", ")}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-muted-foreground">Sin coincidencia previa</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Formación, metodologías y proyectos previos */}
+            <Collapsible className="pt-1">
+              <CollapsibleTrigger className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">
+                <GraduationCap className="h-3.5 w-3.5" />
+                <span>Ver formación, metodologías y proyectos previos</span>
+                <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-border/40 mt-2">
+                <div className="space-y-1">
+                  <span className="font-semibold text-muted-foreground">Formación</span>
+                  {cand.estudios.map((e, i) => (
+                    <p key={i} className="text-foreground">
+                      {e.nivel} en {e.titulo} ({e.institucion}, {e.anio_fin})
+                    </p>
+                  ))}
+                </div>
+                <div className="space-y-1">
+                  <span className="font-semibold text-muted-foreground">Metodologías y Soft Skills</span>
+                  <p className="text-foreground">
+                    {[...cand.metodologias, ...cand.habilidades_blandas].join(" · ")}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="font-semibold text-muted-foreground">Proyectos previos</span>
+                  {cand.proyectos.map((p, i) => (
+                    <p key={i} className="text-foreground">
+                      {p.nombre} ({p.cliente_sector}, {p.anio})
+                    </p>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * Tarjeta super minimalista para candidatos alternativos (#2, #3...)
+ * Disposición horizontal destacando solo factores clave (% de factores,
+ * talento oculto, partner matched, sin IDs, sin brechas ni fortalezas).
+ */
+function AlternativeCandidateCard({
+  cand,
+  rankLabel,
+  onPromoteToTop1,
+}: {
+  cand: CandidateMatch;
+  rankLabel: string;
+  onPromoteToTop1?: () => void;
+}) {
+  const { techPct, logPct, histPct } = computeCandidateFactorPercentages(cand);
+  const diff = cand.comparisonVsTop1;
+
+  return (
+    <Card className="p-3.5 border-border/70 bg-surface/90 shadow-2xs hover:border-brand/30 transition-colors">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+        {/* Candidato: Rank + Avatar + Nombre (sin ID) + Puesto/Seniority */}
+        <div className="flex items-center gap-3 min-w-0">
+          <Badge variant="outline" className="text-xs font-semibold tabular-nums shrink-0">
+            {rankLabel}
+          </Badge>
+          <PersonAvatar name={cand.nombre_completo} initials={cand.initials} size="md" />
+          <div className="min-w-0">
+            <PersonName
+              name={cand.nombre_completo}
+              className="text-sm md:text-base font-semibold text-foreground truncate block"
+            />
+            <p className="text-xs text-muted-foreground truncate">
+              {cand.puesto_actual} · {cand.nivel_seniority} · {cand.disponibilidad}
+            </p>
           </div>
         </div>
 
-        {/* Afinidad Global + Botón promover si es alternativa */}
-        <div className="flex flex-col items-end gap-2 shrink-0 self-end md:self-start">
+        {/* Factores clave (disposición horizontal) y badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Factor Técnico % */}
+          <span className="inline-flex items-center rounded-lg border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 tabular-nums">
+            Técnico: <strong className="ml-1 font-semibold">{techPct}%</strong>
+          </span>
+
+          {/* Factor Logístico % */}
+          <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">
+            Logístico: <strong className="ml-1 font-semibold">{logPct}%</strong>
+          </span>
+
+          {/* Factor Histórico % */}
+          <span className="inline-flex items-center rounded-lg border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-700 dark:text-violet-300 tabular-nums">
+            Histórico: <strong className="ml-1 font-semibold">{histPct}%</strong>
+          </span>
+
+          {/* Badge Talento Oculto */}
+          {cand.isHiddenTalent && (
+            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 text-[11px] font-medium">
+              <Sparkles className="h-3 w-3" />
+              <span>Hidden talent</span>
+            </Badge>
+          )}
+
+          {/* Badge Match Partner */}
+          {cand.matchPartners.length > 0 && (
+            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 text-[11px] font-medium">
+              <Users className="h-3 w-3" />
+              <span>Partner matched</span>
+            </Badge>
+          )}
+        </div>
+
+        {/* Afinidad % + Botón seleccionar */}
+        <div className="flex items-center gap-3 shrink-0 self-end lg:self-center">
           <div className="flex items-center">
-            <MatchRing score={cand.matchScore} size={58} strokeWidth={4.5} />
+            <MatchRing score={cand.matchScore} size={44} strokeWidth={3.5} />
             <DiffPctPill value={diff?.overallScorePct} />
           </div>
-          {isAlternative && onPromoteToTop1 && (
+
+          {onPromoteToTop1 && (
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={onPromoteToTop1}
-              className="gap-1.5 text-xs h-8"
+              className="gap-1.5 text-xs h-8 whitespace-nowrap"
             >
               <ArrowUpCircle className="h-3.5 w-3.5 text-brand" />
               <span>Seleccionar como titular</span>
             </Button>
           )}
         </div>
-      </div>
-
-      {/* 3 DIMENSIONES AGRUPADAS: 1. Factor Técnico, 2. Factor Logístico, 3. Factor Histórico */}
-      <div className="space-y-4 pt-2 border-t border-border/60">
-        {/* 1. FACTOR TÉCNICO */}
-        <div className="rounded-[12px] border border-border/60 bg-neutral-50/50 dark:bg-neutral-900/30 p-4 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Code2 className="h-3.5 w-3.5 text-brand" />
-              <span>1. Factor Técnico</span>
-            </span>
-
-            {cand.isHiddenTalent && (
-              <Badge variant="default" className="gap-1 text-xs">
-                <Sparkles className="h-3 w-3" />
-                <span>Hidden talent detected</span>
-              </Badge>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
-            <div className="space-y-0.5">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Layers className="h-3 w-3" /> Área
-              </span>
-              <p className="font-medium text-foreground">{cand.area}</p>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Briefcase className="h-3 w-3" /> Rol
-              </span>
-              <p className="font-medium text-foreground">{cand.rol}</p>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Award className="h-3 w-3" /> Seniority y Exp.
-              </span>
-              <p className="font-medium text-foreground tabular-nums flex items-center flex-wrap">
-                <span>
-                  {cand.nivel_seniority} · {cand.anios_experiencia}a ({cand.anios_en_ntt}a NTT)
-                </span>
-                <DiffPctPill value={diff?.experiencePct} />
-                <DiffPctPill value={diff?.seniorityPct} />
-              </p>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Building2 className="h-3 w-3" /> Sector principal
-              </span>
-              <p className="font-medium text-foreground">{cand.sector_principal}</p>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <ShieldCheck className="h-3 w-3" /> Certificaciones
-              </span>
-              <p className="font-medium text-foreground flex items-center flex-wrap">
-                <span className="truncate max-w-[140px]">
-                  {cand.certificaciones.length > 0
-                    ? cand.certificaciones.map((c) => `${c.nombre} (${c.anio})`).join(", ")
-                    : "Sin certificaciones"}
-                </span>
-                <DiffPctPill value={diff?.certificationsPct} />
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap pt-1 text-xs">
-            <span className="text-muted-foreground font-medium flex items-center">
-              Skills:
-              <DiffPctPill value={diff?.skillsPct} />
-            </span>
-            {cand.skills.map((s) => (
-              <Badge
-                key={s.skill}
-                variant="secondary"
-                className="font-normal text-xs bg-surface border-border tabular-nums"
-              >
-                {s.skill} · N{s.nivel} ({s.anios}a)
-              </Badge>
-            ))}
-          </div>
-        </div>
-
-        {/* 2. FACTOR LOGÍSTICO + 3. FACTOR HISTÓRICO */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 2. FACTOR LOGÍSTICO */}
-          <div className="rounded-[12px] border border-border/60 bg-neutral-50/50 dark:bg-neutral-900/30 p-4 space-y-3">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-brand" />
-              <span>2. Factor Logístico</span>
-            </span>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="space-y-0.5">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <Globe className="h-3 w-3" /> Ubicación
-                </span>
-                <p className="font-medium text-foreground">
-                  {cand.ciudad}, {cand.pais}
-                </p>
-              </div>
-
-              <div className="space-y-0.5">
-                <span className="text-muted-foreground">Disponibilidad</span>
-                <div>
-                  <StatusDot
-                    status={
-                      cand.disponibilidad === "En banca"
-                        ? "approved"
-                        : cand.disponibilidad === "Asignado"
-                        ? "rejected"
-                        : "matching"
-                    }
-                    label={cand.disponibilidad}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-0.5">
-                <span className="text-muted-foreground">Modalidad / Movilidad</span>
-                <p className="font-medium text-foreground">
-                  {cand.modalidad_trabajo} · {cand.movilidad_internacional ? "Movilidad int." : "Local"}
-                </p>
-              </div>
-
-              <div className="space-y-0.5">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <Languages className="h-3 w-3" /> Idiomas
-                </span>
-                <p className="font-medium text-foreground">
-                  {cand.idiomas.map((i) => `${i.idioma} (${i.nivel})`).join(", ")}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. FACTOR HISTÓRICO */}
-          <div className="rounded-[12px] border border-border/60 bg-neutral-50/50 dark:bg-neutral-900/30 p-4 space-y-3">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <History className="h-3.5 w-3.5 text-brand" />
-              <span>3. Factor Histórico</span>
-            </span>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Conformidad puesto actual</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {cand.conformidadActual}%
-                  </span>
-                  {cand.conformidadActual < 70 && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge variant="warning" className="gap-1 text-xs">
-                          <RefreshCw className="h-3 w-3" />
-                          <span>Open to change</span>
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Conformidad &lt; 70% en encuestas internas: abierto a cambiar de proyecto
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1 border-t border-border/40">
-                <span className="text-muted-foreground">Sinergia con equipo</span>
-                {cand.matchPartners.length > 0 ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="success" className="gap-1 text-xs">
-                        <Users className="h-3 w-3" />
-                        <span>Partner matched</span>
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Compañero en proyectos exitosos previos con: {cand.matchPartners.join(", ")}
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <span className="text-muted-foreground">Sin coincidencia previa</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Desplegable compacto con el resto de campos del parquet (estudios, metodologías, proyectos) */}
-        <Collapsible className="pt-1">
-          <CollapsibleTrigger className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">
-            <GraduationCap className="h-3.5 w-3.5" />
-            <span>Ver formación, metodologías y proyectos previos</span>
-            <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-border/40 mt-2">
-            <div className="space-y-1">
-              <span className="font-semibold text-muted-foreground">Formación</span>
-              {cand.estudios.map((e, i) => (
-                <p key={i} className="text-foreground">
-                  {e.nivel} en {e.titulo} ({e.institucion}, {e.anio_fin})
-                </p>
-              ))}
-            </div>
-            <div className="space-y-1">
-              <span className="font-semibold text-muted-foreground">Metodologías y Soft Skills</span>
-              <p className="text-foreground">
-                {[...cand.metodologias, ...cand.habilidades_blandas].join(" · ")}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <span className="font-semibold text-muted-foreground">Proyectos previos</span>
-              {cand.proyectos.map((p, i) => (
-                <p key={i} className="text-foreground">
-                  {p.nombre} ({p.cliente_sector}, {p.anio})
-                </p>
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
       </div>
     </Card>
   );
@@ -981,7 +1131,15 @@ export function ProjectMatcherPage() {
         {/* 2. OVERVIEW DEL EQUIPO PROPUESTO (luego de Ideal Profiles) */}
         {result && !loading && (
           <BlurFade delay={0.11}>
-            <TeamOverviewSection overview={result.teamOverview} />
+            <TeamOverviewSection
+              overview={result.teamOverview}
+              roleMatches={result.roleMatches}
+              onViewCandidate={() => {
+                document
+                  .getElementById("candidates-heading")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            />
           </BlurFade>
         )}
 
@@ -1022,13 +1180,9 @@ export function ProjectMatcherPage() {
                         </span>
                       </div>
 
-                      {/* Top 1 único visible por defecto */}
+                      {/* Top 1 único visible por defecto (con disclaimer arriba) */}
                       {top1 && (
-                        <CandidateMatchCard
-                          cand={top1}
-                          rankLabel="Top 1"
-                          isAlternative={false}
-                        />
+                        <Top1CandidateCard cand={top1} />
                       )}
 
                       {/* Desplegable con los demás candidatos considerados */}
@@ -1038,19 +1192,18 @@ export function ProjectMatcherPage() {
                             <span className="flex items-center gap-2">
                               <Users className="h-3.5 w-3.5 text-brand" />
                               <span>
-                                Ver otros candidatos considerados ({alternatives.length}) · Comparativa % vs Top 1
+                                Ver otros candidatos considerados ({alternatives.length}) · Factores y comparativa vs Top 1
                               </span>
                             </span>
                             <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                           </CollapsibleTrigger>
 
-                          <CollapsibleContent className="pt-4 space-y-4">
+                          <CollapsibleContent className="pt-4 space-y-3">
                             {alternatives.map((alt, idx) => (
-                              <CandidateMatchCard
+                              <AlternativeCandidateCard
                                 key={alt.employee_id}
                                 cand={alt}
                                 rankLabel={`#${idx + 2}`}
-                                isAlternative={true}
                                 onPromoteToTop1={() =>
                                   handlePromoteCandidate(group.roleId, alt.employee_id)
                                 }
