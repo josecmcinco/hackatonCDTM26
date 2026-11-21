@@ -13,7 +13,7 @@ Conectar la API del backend con el frontend en React y preparar la vista de matc
 - Creada la arquitectura en capas: Controller (`candidatos_controller.py`), Service (`candidatos_service.py`) y Repository (`candidatos_repository.py`).
 - Implementados y validados los endpoints `POST /api/candidatos/matching`, `POST /api/candidatos/equipo` y `GET /api/candidatos/<id>`.
 - Creada la capa de herramientas (`backend/tools/`) con esquemas y despacho para Function Calling con Gemini.
-- Implementado el flujo de entrada por voz: Audio $\rightarrow$ ElevenLabs Speech-to-Text $\rightarrow$ Gemini con Tools sobre DuckDB $\rightarrow$ Decisión final (`backend/controller/agente_controller.py`, `backend/service/agente_service.py`).
+- Implementado el módulo de transcripción asíncrona de voz (`transcripcion_controller.py` y `transcripcion_service.py`) con soporte para streaming de fragmentos mientras el usuario habla y cierre final.
 
 ## En curso
 - 
