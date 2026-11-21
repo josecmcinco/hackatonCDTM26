@@ -71,7 +71,7 @@ Devuelve tu respuesta estructurada explicando:
         """
         Ejecuta el bucle de agente:
         Si Gemini API Key está disponible -> Ejecuta bucle Gemini + Tools.
-        Si no está disponible -> Usa el servicio heurístico determinista como fallback robusto.
+        Si no está disponible o falla la red -> Usa el servicio heurístico determinista como fallback robusto.
         """
         if not texto_consulta or not texto_consulta.strip():
             raise ValueError("El texto de la consulta está vacío.")
@@ -80,7 +80,13 @@ Devuelve tu respuesta estructurada explicando:
             # Fallback determinista automático si aún no han pegado la clave en el .env
             return self._procesar_con_fallback_heuristico(texto_consulta)
 
-        return self._ejecutar_bucle_gemini(texto_consulta)
+        try:
+            return self._ejecutar_bucle_gemini(texto_consulta)
+        except Exception as e:
+            # Fallback de seguridad en caso de fallo de red/cuota para no tirar la demo
+            fallback_res = self._procesar_con_fallback_heuristico(texto_consulta)
+            fallback_res["advertencia_red_gemini"] = f"Se utilizó el motor interno porque la llamada a Gemini falló: {str(e)}"
+            return fallback_res
 
     def _ejecutar_bucle_gemini(self, texto_consulta: str, max_iteraciones: int = 5) -> Dict[str, Any]:
         """
