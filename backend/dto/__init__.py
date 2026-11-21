@@ -5,6 +5,7 @@ from .dto_request_candidato_ideal import (
     RequisitoSkillDTO,
     RequisitoIdiomaDTO,
 )
+from .dto_ponderacion_filtro_blando import DTO_ponderacion_filtro_blando
 from .dto_request_obtener_candidatos import DTO_request_obtener_candidatos
 from .dto_request_generar_audio import DTO_request_generar_audio
 
@@ -13,6 +14,7 @@ __all__ = [
     "CandidatoIdealEntryDTO",
     "RequisitoSkillDTO",
     "RequisitoIdiomaDTO",
+    "DTO_ponderacion_filtro_blando",
     "DTO_request_obtener_candidatos",
     "DTO_request_generar_audio",
 ]
