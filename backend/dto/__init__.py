@@ -8,6 +8,8 @@ from .dto_request_candidato_ideal import (
 from .dto_ponderacion_filtro_blando import DTO_ponderacion_filtro_blando
 from .dto_request_obtener_candidatos import DTO_request_obtener_candidatos
 from .dto_request_generar_audio import DTO_request_generar_audio
+from .dto_request_transcribir_audio import DTO_request_transcribir_audio
+from .dto_response_transcripcion import DTO_response_transcripcion
 
 __all__ = [
     "DTO_request_candidato_ideal",
@@ -17,4 +19,6 @@ __all__ = [
     "DTO_ponderacion_filtro_blando",
     "DTO_request_obtener_candidatos",
     "DTO_request_generar_audio",
+    "DTO_request_transcribir_audio",
+    "DTO_response_transcripcion",
 ]
