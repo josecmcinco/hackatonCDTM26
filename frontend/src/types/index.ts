@@ -1,149 +1,87 @@
-export type AppMode = 'staffing' | 'recruitment';
+export type ImportanceLevel = 'critical' | 'high' | 'medium' | 'low';
 
-export type Urgency = 'critical' | 'high' | 'medium' | 'low';
-
-export type OpportunityStatus = 'open' | 'matching' | 'shortlist' | 'staffed';
-
-export interface Skill {
-  name: string;
-  level: number; // 1-5
-  evidenceCount: number;
-}
-
-export interface Evidence {
-  text: string;
-  year: number;
-  project: string;
-}
-
-export interface Profile {
-  id: string;
-  name: string;
-  initials: string;
-  role: string;
-  seniority: 'Junior' | 'Mid' | 'Senior' | 'Lead' | 'Principal';
-  unit: string; // Business unit in staffing, candidate source in recruitment
-  availability: string; // Availability date/status or interview stage
-  skills: Skill[];
-  hiddenTalentFlag: boolean;
-  evidence: Evidence[];
-  experienceYears?: number;
-}
-
-export interface RadarPoint {
-  axis: string;
-  profileValue: number;
-  requiredValue: number;
-}
-
-export interface FactorContribution {
-  factor: string;
-  percentage: number;
-  impact: 'positive' | 'neutral' | 'negative';
-}
-
-export interface AdjacentSkillPath {
-  fromSkill: string;
-  bridge: string;
-  toSkill: string;
-}
-
-export interface MatchResult {
-  profileId: string;
-  opportunityId: string;
-  score: number;
-  reasons: [string, string];
-  radar: RadarPoint[];
-  breakdown: FactorContribution[];
-  evidence: Evidence[];
-  hiddenTalent: boolean;
-  adjacentPath?: AdjacentSkillPath;
-  status: 'pending' | 'approved' | 'rejected';
-  rejectionReason?: string;
-  approvedAt?: string;
-}
-
-export interface Opportunity {
-  id: string;
-  title: string;
-  client: string;
-  sector: string;
-  location: string;
-  modality: 'Remoto' | 'Híbrido' | 'Presencial';
-  deadline: string;
-  urgency: Urgency;
-  mustHaveSkills: string[];
-  status: OpportunityStatus;
-  bestMatchScore: number;
-  openedAt: string;
+export interface ProjectSearchRequest {
   description: string;
-  headcount: number;
+  projectImportance: ImportanceLevel;
 }
 
-export interface AuditLogEntry {
-  id: string;
-  actor: string;
-  action: 'Aprobado' | 'Descartado' | 'Modo ciego activado' | 'Modo ciego desactivado';
-  targetName: string;
-  opportunityTitle: string;
-  timestamp: string;
-  note: string;
+export interface IdealProfile {
+  roleId: string;
+  roleName: string;
+  inferredImportance: ImportanceLevel;
+  area: string;
+  seniority: string;
+  minExperienceYears: number;
+  sectorPrincipal: string;
+  requiredSkills: string[];
+  certifications: string[];
+  modality: string;
+  availabilityRequired: string;
 }
 
-export interface SkillDemandSupply {
+export interface RawSkill {
   skill: string;
-  demand: number;
-  supply: number;
-  gap: number;
-  isHighlighted?: boolean;
+  nivel: number; // 1..5 (from profiles.parquet)
+  anios: number;
 }
 
-export interface HeatmapDatum {
-  id: string;
-  data: Array<{
-    x: string;
-    y: number;
-  }>;
+export interface RawCertification {
+  nombre: string;
+  anio: number;
 }
 
-export interface SankeyData {
-  nodes: Array<{ id: string; nodeColor?: string }>;
-  links: Array<{ source: string; target: string; value: number }>;
+export interface RawLanguage {
+  idioma: string;
+  nivel: string;
 }
 
-export interface SkillAdjacencyNode {
-  id: string;
-  label: string;
-  type: 'required' | 'bridge' | 'source';
-  profilesCount: number;
-  category: string;
+export interface DimensionDiffVsTop1 {
+  experiencePct: number;     // % diferencia en anios_experiencia vs Top 1 (ej. +25, -22)
+  skillsPct: number;         // % diferencia en nivel medio de skills vs Top 1
+  certificationsPct: number; // % diferencia en cantidad de certificaciones vs Top 1
+  seniorityPct: number;      // % diferencia en seniority vs Top 1
+  overallScorePct: number;   // % diferencia en matchScore vs Top 1
 }
 
-export interface SkillAdjacencyEdge {
-  id: string;
-  source: string;
-  target: string;
-  label: string;
+export interface CandidateMatch {
+  employee_id: string;
+  nombre_completo: string;
+  initials: string;
+  // 1. Factor Técnico (desde CaseContext/profiles.parquet)
+  area: string;
+  rol: string;
+  puesto_actual: string;
+  nivel_seniority: string;
+  anios_experiencia: number;
+  sector_principal: string;
+  skills: RawSkill[];
+  certificaciones: RawCertification[];
+  // 2. Factor Logístico (desde CaseContext/profiles.parquet)
+  pais: string;
+  disponibilidad: 'En banca' | 'Roll-off próximo (<3 meses)' | 'Asignado';
+  modalidad_trabajo: string;
+  idiomas: RawLanguage[];
+  // 3. Factor Histórico & Campos Inferidos por el Backend
+  rank?: number;             // 1 = Top 1, 2 = #2, etc.
+  matchScore: number;        // 0..100
+  matchReason: string;
+  riskFlag?: string;
+  conformidadActual: number; // 0..100 (< 70 => "Open to change")
+  isHiddenTalent: boolean;   // true => "Hidden talent detected" (en Factor Técnico)
+  matchPartners: string[];   // Ex-compañeros de proyectos exitosos que hicieron match en otro rol => "Partner matched" (en Factor Histórico)
+  comparisonVsTop1?: DimensionDiffVsTop1; // Solo presente para candidatos #2, #3...
 }
 
-export interface CopilotMessage {
-  id: string;
-  sender: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  inlineOpportunityId?: string;
-  inlineProfiles?: Array<{
-    id: string;
-    name: string;
-    score: number;
-    role: string;
-  }>;
+export interface RoleMatchGroup {
+  roleId: string;
+  roleName: string;
+  inferredImportance: ImportanceLevel;
+  matches: CandidateMatch[];
 }
 
-export interface AppState {
-  mode: AppMode;
-  blindMode: boolean;
-  approvedMatches: Record<string, string[]>; // opportunityId -> profileId[]
-  rejectedMatches: Record<string, { profileId: string; reason: string }[]>;
-  auditLog: AuditLogEntry[];
+export interface ProjectSearchResponse {
+  projectId: string;
+  projectImportance: ImportanceLevel;
+  idealProfiles: IdealProfile[];
+  roleMatches: RoleMatchGroup[];
 }
