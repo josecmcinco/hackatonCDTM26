@@ -1,6 +1,6 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
-from controller import candidatos_bp, voice_bp
+from controller import candidatos_bp, voice_bp, agente_bp
 
 app = Flask(__name__)
 CORS(app)  # Permite peticiones desde React
@@ -8,6 +8,7 @@ CORS(app)  # Permite peticiones desde React
 # Registrar controladores
 app.register_blueprint(candidatos_bp)
 app.register_blueprint(voice_bp)
+app.register_blueprint(agente_bp)
 
 @app.route("/api/health", methods=["GET"])
 def health_check():

@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 import urllib.request
 import urllib.error
 from typing import Optional, Dict, Any
@@ -31,7 +32,9 @@ _cargar_env_local()
 
 class VoiceService:
     """
-    Servicio para síntesis de voz (Text-to-Speech) utilizando la API de ElevenLabs.
+    Servicio de voz para interactuar con ElevenLabs:
+    - Speech-to-Text (Transcripción de audio a texto para consultas del manager).
+    - Text-to-Speech (Locución de respuestas o resúmenes de equipo).
     """
 
     def __init__(
@@ -42,7 +45,6 @@ class VoiceService:
     ):
         _cargar_env_local()
         self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY", "")
-        # Voz por defecto (Rachel / Multilingual)
         self.default_voice_id = default_voice_id or os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.default_model_id = default_model_id or os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
 
@@ -50,7 +52,69 @@ class VoiceService:
         """Indica si la clave de API está presente."""
         _cargar_env_local()
         self.api_key = os.getenv("ELEVENLABS_API_KEY", self.api_key)
-        return bool(self.api_key and self.api_key != "tu_api_key_aqui")
+        return bool(self.api_key and self.api_key != "tu_elevenlabs_api_key_aqui")
+
+    def transcribir_audio(
+        self,
+        audio_bytes: bytes,
+        filename: str = "consulta_audio.mp3",
+        content_type: str = "audio/mpeg"
+    ) -> str:
+        """
+        Transcribe un archivo de audio a texto utilizando la API Speech-to-Text de ElevenLabs (Scribe).
+        """
+        if not self.esta_configurado():
+            raise ValueError(
+                "La API Key de ElevenLabs no está configurada. "
+                "Define ELEVENLABS_API_KEY en backend/.env o como variable de entorno."
+            )
+
+        url = "https://api.elevenlabs.io/v1/speech-to-text"
+        boundary = f"----FormBoundary{uuid.uuid4().hex}"
+
+        # Construir cuerpo multipart/form-data manualmente sin librerías externas
+        part_boundary = f"--{boundary}\r\n".encode("utf-8")
+        body_parts = []
+
+        # Campo: model_id
+        body_parts.append(part_boundary)
+        body_parts.append(b'Content-Disposition: form-data; name="model_id"\r\n\r\nscribe_v1\r\n')
+
+        # Campo: file
+        body_parts.append(part_boundary)
+        header_file = (
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f'Content-Type: {content_type}\r\n\r\n'
+        ).encode("utf-8")
+        body_parts.append(header_file)
+        body_parts.append(audio_bytes)
+        body_parts.append(b"\r\n")
+
+        # Cierre del boundary
+        body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+
+        full_body = b"".join(body_parts)
+
+        req = urllib.request.Request(
+            url,
+            data=full_body,
+            headers={
+                "xi-api-key": self.api_key,
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(full_body))
+            },
+            method="POST"
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=45) as response:
+                resp_json = json.loads(response.read().decode("utf-8"))
+                return resp_json.get("text", "")
+        except urllib.error.HTTPError as e:
+            err_content = e.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"Error de ElevenLabs Speech-to-Text (HTTP {e.code}): {err_content}")
+        except Exception as e:
+            raise RuntimeError(f"Fallo en la transcripción de ElevenLabs: {str(e)}")
 
     def generar_audio_mp3(
         self,
@@ -58,9 +122,7 @@ class VoiceService:
         voice_id: Optional[str] = None,
         model_id: Optional[str] = None
     ) -> bytes:
-        """
-        Llama al endpoint Text-to-Speech de ElevenLabs y devuelve el flujo binario MP3.
-        """
+        """Text-to-Speech de ElevenLabs."""
         if not self.esta_configurado():
             raise ValueError(
                 "La API Key de ElevenLabs no está configurada. "
@@ -71,14 +133,10 @@ class VoiceService:
         target_model = model_id or self.default_model_id
 
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice}"
-        
         payload = {
             "text": texto,
             "model_id": target_model,
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75
-            }
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
         }
 
         data = json.dumps(payload).encode("utf-8")
@@ -98,18 +156,14 @@ class VoiceService:
                 return response.read()
         except urllib.error.HTTPError as e:
             err_content = e.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"Error de ElevenLabs (HTTP {e.code}): {err_content}")
+            raise RuntimeError(f"Error de ElevenLabs TTS (HTTP {e.code}): {err_content}")
         except Exception as e:
-            raise RuntimeError(f"Fallo de conexión con ElevenLabs: {str(e)}")
+            raise RuntimeError(f"Fallo de conexión con ElevenLabs TTS: {str(e)}")
 
     def redactar_guion_equipo(self, resultado_equipo: Dict[str, Any]) -> str:
-        """
-        Genera una narración en español, profesional y concisa,
-        para locutar el equipo óptimo seleccionado.
-        """
+        """Genera guion de locución a partir del equipo óptimo."""
         nombre_proy = resultado_equipo.get("nombre_proyecto") or "el proyecto solicitado"
         equipo = resultado_equipo.get("equipo_recomendado", [])
-
         lineas = [f"Para {nombre_proy}, hemos seleccionado el siguiente equipo óptimo."]
 
         for miembro in equipo:

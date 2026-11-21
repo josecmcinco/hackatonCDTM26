@@ -85,6 +85,19 @@ class DTO_request_candidato_ideal:
     # 8. Número de candidatos deseados en el ranking
     top_k: int = 10
 
+    def __post_init__(self):
+        # Asegurar conversión automática si se pasan diccionarios en skills o idiomas
+        if self.skills:
+            self.skills = [
+                RequisitoSkillDTO.from_dict(s) if isinstance(s, dict) else (s if isinstance(s, RequisitoSkillDTO) else RequisitoSkillDTO(nombre=str(s)))
+                for s in self.skills
+            ]
+        if self.idiomas:
+            self.idiomas = [
+                RequisitoIdiomaDTO.from_dict(i) if isinstance(i, dict) else (i if isinstance(i, RequisitoIdiomaDTO) else RequisitoIdiomaDTO(idioma=str(i)))
+                for i in self.idiomas
+            ]
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DTO_request_candidato_ideal":
         skills_data = [
