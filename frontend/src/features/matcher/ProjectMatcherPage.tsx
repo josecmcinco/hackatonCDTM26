@@ -68,6 +68,8 @@ import {
   GraduationCap,
   ArrowUpCircle,
   Lock,
+  Mic,
+  MicOff,
 } from "lucide-react";
 
 const SAMPLE_BRIEFS = [
@@ -508,8 +510,32 @@ export function ProjectMatcherPage() {
     useState<ImportanceLevel>("critical");
   const [description, setDescription] = useState<string>(SAMPLE_BRIEFS[0].text);
   const [loading, setLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ProjectSearchResponse | null>(null);
+
+  const handleToggleMic = () => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    setIsListening(true);
+    toast.info("Micrófono activo: dictando descripción...", {
+      description: "Habla ahora para añadir requisitos al proyecto.",
+    });
+
+    // Simulación limpia de dictado (o hook listo para Web Speech / ElevenLabs en backend)
+    setTimeout(() => {
+      setDescription((prev) =>
+        prev.trim()
+          ? `${prev.trim()} Incorporación inmediata y experiencia demostrable en entornos cloud.`
+          : "Necesitamos un Arquitecto Cloud Lead en banca con disponibilidad inmediata."
+      );
+      setIsListening(false);
+      toast.success("Dictado añadido a la descripción del proyecto");
+    }, 1800);
+  };
 
   const handleSearchMatches = async () => {
     if (!description.trim()) return;
@@ -636,8 +662,31 @@ export function ProjectMatcherPage() {
                 />
               </div>
 
-              {/* Botón único primario: search matches */}
-              <div className="flex items-center justify-end">
+              {/* Botón de micro + botón único primario: search matches */}
+              <div className="flex items-center justify-end gap-3">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant={isListening ? "destructive" : "outline"}
+                      size="lg"
+                      onClick={handleToggleMic}
+                      disabled={loading}
+                      className="px-3.5"
+                      aria-label={isListening ? "Detener dictado por voz" : "Dictar proyecto por voz"}
+                    >
+                      {isListening ? (
+                        <MicOff className="h-4 w-4 animate-pulse" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isListening ? "Escuchando dictado..." : "Dictar descripción por voz"}
+                  </TooltipContent>
+                </Tooltip>
+
                 <Button
                   type="button"
                   size="lg"
