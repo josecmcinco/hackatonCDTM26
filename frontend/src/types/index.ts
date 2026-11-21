@@ -130,6 +130,7 @@ export interface RoleMatchGroup {
   roleId: string;
   roleName: string;
   inferredImportance: ImportanceLevel;
+  filtersRelaxed?: string | null;  // Paso de relajación del filtro duro aplicado por el backend (null = filtros completos)
   matches: CandidateMatch[];
 }
 
